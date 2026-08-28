@@ -1183,5 +1183,79 @@ init().catch(e=>{console.error(e);document.getElementById('authError').textConte
   render('home');
 })();
 </script>
+
+<script id="myosHouseholdV7">
+(function(){
+  const HH7={month:new Date().toISOString().slice(0,7),summaries:[],payments:[],accounts:[],cards:[],categories:[],budgets:[],transactions:[],settings:null};
+  const el=id=>document.getElementById(id);
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const yen=v=>Number(v||0).toLocaleString('ja-JP')+'円';
+  const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+  const summaryNames=["食材費","外食費","軽食費","日用品","幼稚園関連費（旭透）","子供関連費","ガソリン","学習費","保険","通信費","サブスク","DWE","携帯端末分割","美容代","娯楽・趣味","医療費","税金","交通費","交通系チャージ（りく）","交通系チャージ（ひま）","ロピア 電子マネーチャージ","現金引出","現金預入","口座振替","三井住友ゴールド引落","JCB W引落","三井ショッピングパークカード引落","テラスモール湘南JCB引落","JRE ビューカード引落","Amazonマスター引落","三井住友NL（向日葵）","メルカード","雑損","雑収入","特別支出","その他","給与①","給与②","賞与","子供手当","臨時収入","立替金","父借入","妻借入","父返済","妻返済","その他借入","その他借入返済"];
+  const paymentNames=["現金","三井住友銀行（りく）","三井住友銀行（ひま）","横浜銀行","ゆうちょ銀行","三井住友ゴールド","JCB W","三井ショッピングパークカード","テラスモール湘南JCB","JRE ビューカード","Amazonマスター","三井住友NL（向日葵）","メルカード","PayPay","Au Pay","d払い","メルペイ","楽天Pay","交通系（りく）","交通系（ひま）","ロピア 電子マネー"];
+  const incomeNames=new Set(["給与①","給与②","賞与","子供手当","臨時収入","雑収入"]);
+  const borrowNames=new Set(["父借入","妻借入","その他借入"]);
+  const repayNames=new Set(["父返済","妻返済","その他借入返済"]);
+  const transferNames=new Set(["現金引出","現金預入","口座振替","交通系チャージ（りく）","交通系チャージ（ひま）","ロピア 電子マネーチャージ"]);
+  const cardPaymentNames=new Set(["三井住友ゴールド引落","JCB W引落","三井ショッピングパークカード引落","テラスモール湘南JCB引落","JRE ビューカード引落","Amazonマスター引落","三井住友NL（向日葵）","メルカード"]);
+  const categoryName=n=>incomeNames.has(n)?'収入':repayNames.has(n)||borrowNames.has(n)?'借入・返済':transferNames.has(n)||cardPaymentNames.has(n)?'資金移動・引落':n;
+  const processType=n=>incomeNames.has(n)?'income':borrowNames.has(n)?'borrowing':repayNames.has(n)?'repayment':transferNames.has(n)?'transfer':cardPaymentNames.has(n)?'card_payment':'normal';
+  const cashflowType=n=>incomeNames.has(n)?'income':(borrowNames.has(n)?'income': 'expense');
+  const paymentType=n=>/ゴールド|JCB|カード|マスター|メルカード|NL/.test(n)?'card':(/Pay|払い|交通系|電子マネー/.test(n)?'electronic':'account');
+  const cardNameForPayment=n=>paymentType(n)==='card'?n:null;
+
+  async function ensureMasters(){
+    if(!window.currentUser?.id)return;
+    const uid=currentUser.id;
+    const {data:cats}=await sb.from('household_categories').select('*').eq('user_id',uid);
+    HH7.categories=cats||[];
+    const existingCat=new Set(HH7.categories.map(x=>x.name));
+    const missingCats=summaryNames.filter(n=>!incomeNames.has(n)&&!borrowNames.has(n)&&!repayNames.has(n)&&!transferNames.has(n)&&!cardPaymentNames.has(n)&&!existingCat.has(n));
+    if(missingCats.length){await sb.from('household_categories').insert(missingCats.map((n,i)=>({user_id:uid,name:n,kind:'expense',sort_order:i,archived:false})));}
+    const {data:payments}=await sb.from('household_payment_methods').select('*').eq('user_id',uid);
+    HH7.payments=payments||[];
+    const existingPay=new Set(HH7.payments.map(x=>x.name));
+    const missingPay=paymentNames.filter(n=>!existingPay.has(n));
+    if(missingPay.length){await sb.from('household_payment_methods').insert(missingPay.map(n=>({user_id:uid,name:n,method_type:paymentType(n),linked_card_id:null,archived:false})));}
+    const {data:sums}=await sb.from('household_summaries').select('*').eq('user_id',uid);
+    HH7.summaries=sums||[];
+    const existingSum=new Set(HH7.summaries.map(x=>x.name));
+    const missingSum=summaryNames.filter(n=>!existingSum.has(n));
+    if(missingSum.length){await sb.from('household_summaries').insert(missingSum.map(n=>({user_id:uid,name:n,cashflow_type:cashflowType(n),category_name:categoryName(n),process_type:processType(n),target_name:null,billing_type:cardPaymentNames.has(n)?'card':null,billing_card_name:null,archived:false})));}
+  }
+
+  async function load(){
+    if(!window.currentUser?.id)return;
+    await ensureMasters();
+    const uid=currentUser.id;
+    const [s,p,a,c,cat,b,t,st]=await Promise.all([
+      sb.from('household_summaries').select('*').eq('user_id',uid),sb.from('household_payment_methods').select('*').eq('user_id',uid),sb.from('household_accounts').select('*').eq('user_id',uid),sb.from('household_cards').select('*').eq('user_id',uid),sb.from('household_categories').select('*').eq('user_id',uid),sb.from('household_budgets').select('*').eq('user_id',uid),sb.from('household_transactions').select('*').eq('user_id',uid).order('transaction_date',{ascending:false}),sb.from('household_settings').select('*').eq('user_id',uid).maybeSingle()
+    ]);
+    HH7.summaries=s.data||[];HH7.payments=p.data||[];HH7.accounts=a.data||[];HH7.cards=c.data||[];HH7.categories=cat.data||[];HH7.budgets=b.data||[];HH7.transactions=t.data||[];HH7.settings=st.data||null;
+    HH7.month=HH7.settings?.target_year_month?.slice(0,7)||HH7.month;
+    render('home');
+  }
+  const sum=n=>HH7.summaries.find(x=>x.name===n), pay=n=>HH7.payments.find(x=>x.name===n);
+  function billingYM(date,card){if(!card||!card.close_day)return null;const d=new Date(date+'T00:00:00'),base=new Date(d.getFullYear(),d.getMonth(),1);const months=(d.getDate()<=card.close_day?card.billing_month_after_close:card.billing_month_after_close+1)||1;base.setMonth(base.getMonth()+months);return `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-01`;}
+  function derive(date,summaryName,paymentName,amount,points){const s=sum(summaryName),p=pay(paymentName),card=p?.linked_card_id?HH7.cards.find(c=>c.id===p.linked_card_id):null;const real=Math.max(0,amount-points);return {s,p,card,real,billing:billingYM(date,card)};}
+  function menuBack(){return '<div class="row" style="margin-bottom:12px"><button class="light" onclick="window.hh7Render(\'home\')">← 家計ホーム</button></div>';}
+  function home(){const rows=HH7.transactions.filter(t=>String(t.transaction_date||'').slice(0,7)===HH7.month);let income=0,expense=0,repay=0,borrow=0;rows.forEach(t=>{const a=Number(t.amount||0),pt=t.process_type||'normal';if(pt==='income'||pt==='borrowing')income+=a;else if(pt==='repayment')repay+=a;else if(pt!=='transfer'&&pt!=='card_payment')expense+=a;});const budgets=HH7.budgets.filter(b=>String(b.year_month||'').slice(0,7)===HH7.month);return `<div class="myos-section-head"><div><div class="myos-small">${HH7.month}</div><h3 style="margin:4px 0">今月の家計</h3></div><button class="light" onclick="window.hh7Render('input')">＋ 記録</button></div><div class="myos-card-grid"><div class="myos-card"><div class="myos-small">収入・借入</div><h2>${yen(income)}</h2></div><div class="myos-card"><div class="myos-small">実支出</div><h2>${yen(expense)}</h2></div><div class="myos-card"><div class="myos-small">返済</div><h2>${yen(repay)}</h2></div><div class="myos-card"><div class="myos-small">実収支</div><h2>${yen(income-expense-repay)}</h2></div></div><div class="myos-card" style="margin-top:14px"><div class="myos-section-head"><b>最近の記録</b><button class="light" onclick="window.hh7Render('history')">履歴</button></div>${rows.slice(0,5).map(t=>`<div class="row" style="justify-content:space-between;padding:9px 0;border-bottom:1px solid #eee"><span>${esc(t.description)}</span><b>${yen(t.amount)}</b></div>`).join('')||'<div class="myos-small">まだ記録がありません。</div>'}</div><div class="myos-card" style="margin-top:14px"><b>予算</b>${budgets.length?budgets.slice(0,8).map(b=>`<div style="margin:12px 0"><div class="row" style="justify-content:space-between"><span>${esc(b.category_name)}</span><span>${yen(b.amount)}</span></div></div>`).join(''):'<div class="myos-small">予算は設定画面から追加できます。</div>'}</div>`;}
+  function input(){const so=HH7.summaries.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join(''),po=HH7.payments.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('');return `${menuBack()}<h3>📝 家計を記録</h3><div class="myos-card-grid"><div class="myos-card"><label>日付</label><input id="hh7Date" type="date" value="${today()}"><label>内容</label><input id="hh7Desc" placeholder="例：ロピア"><label>摘要</label><select id="hh7Summary"><option value="">選択してください</option>${so}</select><label>口座・決済</label><select id="hh7Payment"><option value="">選択してください</option>${po}</select></div><div class="myos-card"><label>金額</label><input id="hh7Amount" type="number" min="0" inputmode="numeric"><label>ポイント利用</label><input id="hh7Points" type="number" min="0" value="0" inputmode="numeric"><label>反映先（任意）</label><input id="hh7Target"><label>メモ</label><input id="hh7Memo"></div></div><div id="hh7Preview" class="myos-card" style="margin-top:14px"></div><button class="primary" style="width:100%;margin-top:12px" onclick="window.hh7Save()">この内容で登録</button>`;}
+  function preview(){const date=el('hh7Date')?.value,sn=el('hh7Summary')?.value,pn=el('hh7Payment')?.value,a=Number(el('hh7Amount')?.value||0),pt=Number(el('hh7Points')?.value||0),d=derive(date,sn,pn,a,pt);if(el('hh7Preview'))el('hh7Preview').innerHTML=`<h4 style="margin-top:0">自動判定</h4><div>摘要：<b>${esc(d.s?.name||'—')}</b></div><div>カテゴリ：<b>${esc(d.s?.category_name||'—')}</b></div><div>処理区分：<b>${esc(d.s?.process_type||'—')}</b></div><div>決済：<b>${esc(d.p?.name||'—')}</b></div><div>請求カード：<b>${esc(d.card?.name||'—')}</b></div><div>請求年月：<b>${esc(d.billing||'—')}</b></div><div>金額：<b>${yen(a)}</b> ／ ポイント：<b>${yen(pt)}</b> ／ 実決済：<b>${yen(d.real)}</b></div>`;}
+  async function save(){const uid=currentUser.id,date=el('hh7Date').value,desc=el('hh7Desc').value.trim(),sn=el('hh7Summary').value,pn=el('hh7Payment').value,a=Number(el('hh7Amount').value||0),pt=Number(el('hh7Points').value||0),target=el('hh7Target').value.trim()||null,memo=el('hh7Memo').value.trim()||null;if(!date||!desc||!sn||!pn||a<=0||pt<0||pt>a){alert('日付・内容・摘要・決済・金額・ポイントを確認してください。');return;}const d=derive(date,sn,pn,a,pt);const row={user_id:uid,transaction_date:date,description:desc,summary_id:d.s?.id||null,summary_name:d.s?.name||sn,payment_method_id:d.p?.id||null,payment_method_name:d.p?.name||pn,amount:a,points_used:pt,target_input:target,memo,cashflow_type:d.s?.cashflow_type||'expense',category_name:d.s?.category_name||'その他',process_type:d.s?.process_type||'normal',target_auto:d.s?.target_name||null,billing_type:d.s?.billing_type||null,billing_card_id:d.card?.id||null,billing_card_name:d.card?.name||null,billing_year_month:d.billing};const {error}=await sb.from('household_transactions').insert(row);if(error){alert('登録に失敗：'+error.message);return;}await load();toast('家計を登録しました');window.hh7Render('home');}
+  function history(){const rows=HH7.transactions.slice(0,100);return `${menuBack()}<div class="myos-section-head"><h3>📋 家計履歴</h3><span class="myos-small">${rows.length}件</span></div>${rows.map(t=>`<div class="myos-card" style="margin:8px 0"><div class="row" style="justify-content:space-between"><div><b>${esc(t.description)}</b><div class="myos-small">${esc(t.transaction_date)} ・ ${esc(t.summary_name||'')} ・ ${esc(t.payment_method_name||'')}</div></div><strong>${yen(t.amount)}</strong></div><div class="myos-small">実決済 ${yen(t.actual_payment)} / ${esc(t.category_name||'')}</div></div>`).join('')||'<div class="myos-card">まだ記録がありません。</div>'}`;}
+  function monthly(){const cats={};HH7.transactions.filter(t=>String(t.transaction_date).slice(0,7)===HH7.month&&t.process_type==='normal').forEach(t=>cats[t.category_name||'その他']=(cats[t.category_name||'その他']||0)+Number(t.actual_payment||0));return `${menuBack()}<div class="myos-section-head"><div><div class="myos-small">対象年月</div><input id="hh7Month" type="month" value="${HH7.month}" style="width:auto"></div></div><div class="myos-card"><h3>📊 月次支出</h3>${Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="row" style="justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee"><span>${esc(n)}</span><b>${yen(v)}</b></div>`).join('')||'<div class="myos-small">この月の支出はありません。</div>'}</div>`;}
+  function cards(){return `${menuBack()}<h3>💳 カード請求</h3><div class="myos-card-grid">${HH7.cards.map(c=>{const b=HH7.transactions.filter(t=>t.billing_card_id===c.id&&String(t.billing_year_month).slice(0,7)===HH7.month).reduce((x,t)=>x+Number(t.actual_payment||0),0);return `<div class="myos-card"><b>${esc(c.name)}</b><div class="myos-small">締日 ${esc(c.close_day)}日 / 引落 ${esc(c.withdrawal_day)}日</div><h2>${yen(b)}</h2><div class="myos-small">対象請求年月：${HH7.month}</div></div>`}).join('')||'<div class="myos-card">カードを登録すると請求額を自動集計します。</div>'}</div>`;}
+  function assets(){const acc=HH7.accounts.map(a=>{const tx=HH7.transactions.filter(t=>t.payment_method_name===a.name);let bal=Number(a.initial_balance||0);tx.forEach(t=>{const amt=Number(t.actual_payment||0),pt=t.process_type;if(t.cashflow_type==='income')bal+=amt;else if(pt==='normal')bal-=amt;});return `<div class="row" style="justify-content:space-between;padding:9px 0"><span>${esc(a.name)}</span><b>${yen(bal)}</b></div>`}).join('');const cards=HH7.cards.map(c=>{const b=HH7.transactions.filter(t=>t.billing_card_id===c.id).reduce((x,t)=>x+Number(t.actual_payment||0),0);return `<div class="row" style="justify-content:space-between;padding:9px 0"><span>${esc(c.name)}</span><b>${yen(b)}</b></div>`}).join('');return `${menuBack()}<h3>🏦 資産・負債</h3><div class="myos-card-grid"><div class="myos-card"><h3>現預金</h3>${acc||'<div class="myos-small">口座を登録してください。</div>'}</div><div class="myos-card"><h3>カード負債</h3>${cards||'<div class="myos-small">カードを登録してください。</div>'}</div></div>`;}
+  function settings(){return `${menuBack()}<h3>⚙ 家計設定</h3><div class="myos-card-grid"><div class="myos-card"><h3>摘要</h3><div class="myos-small">${HH7.summaries.length}件</div></div><div class="myos-card"><h3>決済</h3><div class="myos-small">${HH7.payments.length}件</div></div><div class="myos-card"><h3>口座</h3><div class="myos-small">${HH7.accounts.length}件</div></div><div class="myos-card"><h3>カード</h3><div class="myos-small">${HH7.cards.length}件</div></div></div>`;}
+  function render(screen){const box=el('hhScreen');if(!box)return;const v={home,input,history,monthly,cards,assets,settings};box.innerHTML=(v[screen]||home)();if(screen==='input'){['hh7Date','hh7Amount','hh7Points','hh7Summary','hh7Payment'].forEach(id=>el(id)?.addEventListener('input',preview));['hh7Summary','hh7Payment'].forEach(id=>el(id)?.addEventListener('change',preview));preview();}if(screen==='monthly')el('hh7Month')?.addEventListener('change',e=>{HH7.month=e.target.value;render('monthly');});}
+  document.addEventListener('click',e=>{const b=e.target.closest('[data-hh-screen]');if(b){e.preventDefault();render(b.dataset.hhScreen);}});
+  window.hh7Render=render;window.hh7Save=save;
+  window.addEventListener('myos-user-ready',load);
+  const timer=setInterval(()=>{if(window.currentUser?.id){clearInterval(timer);load();}},400);
+  render('home');
+})();
+</script>
+
 </body>
 </html>
