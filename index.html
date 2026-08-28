@@ -101,6 +101,18 @@ body{background:var(--myos-bg)!important;}
 .myos-card button.myos-nav{margin-top:10px;padding-left:0;}
 @media(max-width:760px){.myos-section-head{align-items:flex-start;}}
 </style>
+
+<style id="myosHouseholdThemeFix">
+/* MY OS shell: readable light theme */
+.myos-module, .myos-module h1, .myos-module h2, .myos-module h3, .myos-module h4, .myos-module p,
+.myos-module label, .myos-module span, .myos-module div, .myos-module strong, .myos-module b { color: var(--myos-text); }
+.myos-module .myos-small, .myos-module .muted { color: var(--myos-muted); }
+.myos-card { color: var(--myos-text); background:#fff; }
+.myos-card .myos-small { color:var(--myos-muted); }
+.myos-card input, .myos-card select, .myos-card textarea { color:var(--myos-text); background:#fff; border-color:#d1d5db; }
+.myos-card button.light { color:#1f2937; background:#f3f4f6; border:1px solid #d1d5db; }
+.myos-card button.primary { color:#fff; }
+</style>
 </head>
 <body>
 <div id="myosShell">
@@ -958,231 +970,6 @@ init().catch(e=>{console.error(e);document.getElementById('authError').textConte
 </script>
 
 
-
-<script id="householdInputV4">
-(function(){
-  const summaryNames=["食材費", "外食費", "軽食費", "日用品", "幼稚園関連費（旭透）", "子供関連費", "ガソリン", "学習費", "保険", "通信費", "サブスク", "DWE", "携帯端末分割", "美容代", "娯楽・趣味", "医療費", "税金", "交通費", "交通系チャージ（りく）", "交通系チャージ（ひま）", "ロピア 電子マネーチャージ", "現金引出", "現金預入", "口座振替", "三井住友ゴールド引落", "JCB W引落", "三井ショッピングパークカード引落", "テラスモール湘南JCB引落", "JRE ビューカード引落", "Amazonマスター引落", "三井住友NL（向日葵）", "メルカード", "雑損", "雑収入", "特別支出", "その他", "給与①", "給与②", "賞与", "子供手当", "臨時収入", "立替金", "父借入", "妻借入", "父返済", "妻返済", "その他借入", "その他借入返済"];
-  const paymentNames=["現金", "三井住友銀行（りく）", "三井住友銀行（ひま）", "横浜銀行", "ゆうちょ銀行", "三井住友ゴールド", "JCB W", "三井ショッピングパークカード", "テラスモール湘南JCB", "JRE ビューカード", "Amazonマスター", "三井住友NL（向日葵）", "メルカード", "PayPay", "Au Pay", "d払い", "メルペイ", "楽天Pay", "交通系（りく）", "交通系（ひま）", "ロピア 電子マネー"];
-
-  function esc(v){
-    return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  function populate(){
-    const s=document.getElementById('hhSummary');
-    const p=document.getElementById('hhPayment');
-    if(s && !s.dataset.ready){
-      s.innerHTML='<option value="">選択してください</option>'+
-        summaryNames.map(x=>'<option>'+esc(x)+'</option>').join('');
-      s.dataset.ready='1';
-    }
-    if(p && !p.dataset.ready){
-      p.innerHTML='<option value="">選択してください</option>'+
-        paymentNames.map(x=>'<option>'+esc(x)+'</option>').join('');
-      p.dataset.ready='1';
-    }
-  }
-
-  function preview(){
-    const amount=Number(document.getElementById('hhAmount')?.value||0);
-    const points=Math.max(0,Number(document.getElementById('hhPoints')?.value||0));
-    const real=Math.max(0,amount-points);
-    const summary=document.getElementById('hhSummary')?.value||'';
-    const payment=document.getElementById('hhPayment')?.value||'';
-    const box=document.getElementById('hhAutoValues');
-    if(!box)return;
-    box.innerHTML=[
-      '<div><strong>摘要</strong>：'+esc(summary||'未選択')+'</div>',
-      '<div><strong>口座・決済</strong>：'+esc(payment||'未選択')+'</div>',
-      '<div><strong>金額</strong>：'+amount.toLocaleString()+'円</div>',
-      '<div><strong>ポイント利用</strong>：'+points.toLocaleString()+'円</div>',
-      '<div><strong>実決済額</strong>：'+real.toLocaleString()+'円</div>'
-    ].join('');
-  }
-
-  function validate(){
-    const errors=[];
-    if(!document.getElementById('hhDate')?.value)errors.push('日付');
-    if(!document.getElementById('hhDescription')?.value.trim())errors.push('内容');
-    if(!document.getElementById('hhSummary')?.value)errors.push('摘要');
-    if(!document.getElementById('hhPayment')?.value)errors.push('口座・決済');
-    const amount=Number(document.getElementById('hhAmount')?.value||0);
-    const points=Number(document.getElementById('hhPoints')?.value||0);
-    if(amount<=0)errors.push('金額');
-    if(points>amount)errors.push('ポイント利用（明細金額以下）');
-    return errors;
-  }
-
-  window.hhPrepareSave=function(){
-    const msg=document.getElementById('hhSaveMessage');
-    const errors=validate();
-    if(errors.length){
-      msg.textContent='入力を確認してください：'+errors.join('、');
-      return;
-    }
-    const amount=Number(document.getElementById('hhAmount').value||0);
-    const points=Number(document.getElementById('hhPoints').value||0);
-    msg.textContent='入力OK。実決済額 '+Math.max(0,amount-points).toLocaleString()+
-      '円。DB接続後、この内容を正式登録します。';
-  };
-
-  const observer=new MutationObserver(populate);
-  observer.observe(document.body,{childList:true,subtree:true});
-  document.addEventListener('input',preview);
-  document.addEventListener('change',preview);
-  document.addEventListener('click',e=>{
-    if(e.target.closest('#hhSaveButton')){
-      e.preventDefault();
-      window.hhPrepareSave();
-    }
-  });
-  populate();
-})();
-</script>
-
-
-<script id="householdDbPlan">
-(function(){
-  const tablePlan=[
-    ['household_transactions','家計取引','支出・収入・振替・引落・借入・返済'],
-    ['household_categories','カテゴリ','摘要から判定するカテゴリ'],
-    ['household_summaries','摘要マスタ','摘要→入出金/カテゴリ/処理区分等'],
-    ['household_payment_methods','決済マスタ','口座・決済方法と請求先'],
-    ['household_accounts','口座','現金・銀行・電子マネー等'],
-    ['household_cards','カード','締日・請求月・引落ルール'],
-    ['household_budgets','予算','カテゴリ別月予算'],
-    ['household_settings','家計設定','対象年月など']
-  ];
-
-  window.MYOS_HOUSEHOLD_TABLE_PLAN=tablePlan;
-
-  document.addEventListener('click',function(e){
-    if(e.target.closest('[data-household-screen="input"]')){
-      const msg=document.getElementById('hhSaveMessage');
-      if(msg && !window.MYOS_HOUSEHOLD_DB_READY){
-        msg.textContent='現在は入力確認モードです。Supabaseの家計テーブル作成後に正式登録へ切り替えます。';
-      }
-    }
-  });
-})();
-</script>
-
-<script id="myosHouseholdV6">
-(function(){
-  const HH={
-    month: new Date().toISOString().slice(0,7),
-    summaries:[], payments:[], accounts:[], cards:[], categories:[], budgets:[], transactions:[], settings:null,
-    loaded:false
-  };
-  const el=id=>document.getElementById(id);
-  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-  const yen=v=>Number(v||0).toLocaleString('ja-JP')+'円';
-  const hhDate=()=>new Date().toISOString().slice(0,10);
-  const hhMonth=()=>HH.month+'-01';
-  const summaryByName=n=>HH.summaries.find(x=>x.name===n);
-  const paymentByName=n=>HH.payments.find(x=>x.name===n);
-  const cardForPayment=p=>p?.card_id?HH.cards.find(c=>String(c.id)===String(p.card_id)):null;
-  const categoryForSummary=s=>s?.category_id?HH.categories.find(c=>String(c.id)===String(s.category_id)):null;
-
-  function setStatus(text,ok=false){const x=el('hhDbStatus');if(x){x.textContent=text;x.style.color=ok?'#15803d':'';}}
-  async function safeTable(name,select='*',filterUser=true){
-    if(typeof sb==='undefined' || typeof currentUser==='undefined' || !currentUser?.id) return {data:[],error:new Error('ログインが必要です')};
-    let q=sb.from(name).select(select);
-    // Household tables are being migrated to user-scoped RLS. Only add user_id when the table supports it.
-    if(filterUser) q=q.eq('user_id',currentUser.id);
-    return await q;
-  }
-  async function loadHH(){
-    if(typeof currentUser==='undefined' || !currentUser?.id){setStatus('Googleログインが必要');return;}
-    setStatus('読み込み中…');
-    const names=['household_summaries','household_payment_methods','household_accounts','household_cards','household_categories','household_budgets','household_transactions','household_settings'];
-    const out={};
-    let any=false;
-    for(const n of names){
-      try{const r=await safeTable(n);if(!r.error){out[n]=r.data||[];any=true;}else out[n]=[];}catch(e){out[n]=[];}
-    }
-    HH.summaries=out.household_summaries||[];
-    HH.payments=out.household_payment_methods||[];
-    HH.accounts=out.household_accounts||[];
-    HH.cards=out.household_cards||[];
-    HH.categories=out.household_categories||[];
-    HH.budgets=out.household_budgets||[];
-    HH.transactions=out.household_transactions||[];
-    HH.settings=(out.household_settings||[])[0]||null;
-    HH.loaded=any;
-    setStatus(any?'接続済み（利用可能なテーブルのみ）':'DB準備中');
-    renderHH('home');
-  }
-  function menuBack(){return '<div class="row" style="margin-bottom:12px"><button class="light" onclick="window.hhRender(\'home\')">← 家計ホーム</button></div>';}
-  function hhHome(){
-    const rows=HH.transactions.filter(t=>String(t.transaction_date||t.date||'').slice(0,7)===HH.month);
-    let income=0,expense=0,repay=0,points=0;
-    rows.forEach(t=>{const a=Number(t.amount||0),p=Number(t.points||t.point_used||0);points+=p;const pt=t.process_type||t.transaction_type||'normal';if(pt==='income'||t.income_expense==='income')income+=a;else if(pt==='repayment'||pt==='返済')repay+=a;else expense+=a;});
-    const budgets=HH.budgets.filter(b=>String(b.year_month||b.month||'').slice(0,7)===HH.month);
-    return `<div class="myos-section-head"><div><div class="myos-small">${HH.month}</div><h3 style="margin:4px 0">今月の家計</h3></div><button class="light" onclick="window.hhRender('input')">＋ 記録</button></div>
-      <div class="myos-card-grid">
-        <div class="myos-card"><div class="myos-small">収入</div><h2>${yen(income)}</h2></div>
-        <div class="myos-card"><div class="myos-small">実支出</div><h2>${yen(expense)}</h2></div>
-        <div class="myos-card"><div class="myos-small">借入返済</div><h2>${yen(repay)}</h2></div>
-        <div class="myos-card"><div class="myos-small">実収支</div><h2>${yen(income-expense-repay)}</h2></div>
-      </div>
-      <div class="myos-card" style="margin-top:14px"><b>ポイント利用</b><div style="font-size:24px;margin-top:6px">${yen(points)}</div><div class="myos-small">消費額と実際の負担額を分けて管理</div></div>
-      <div class="myos-card" style="margin-top:14px"><div class="myos-section-head"><b>予算進捗</b><button class="light" onclick="window.hhRender('monthly')">月次を見る</button></div>${budgets.length?budgets.slice(0,8).map(b=>`<div style="margin:12px 0"><div class="row" style="justify-content:space-between"><span>${esc(b.category_name||b.name||'カテゴリ')}</span><span>${yen(b.used_amount||b.used||0)} / ${yen(b.amount||b.budget||0)}</span></div><div class="bar" style="margin-top:6px"><div style="width:${Math.min(100,Number(b.amount||b.budget)?Number(b.used_amount||b.used||0)/Number(b.amount||b.budget)*100:0)}%"></div></div></div>`).join(''):'<div class="myos-small">予算データはまだありません。</div>'}</div>`;
-  }
-  function hhInput(){
-    const sumOpts=HH.summaries.length?HH.summaries.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join(''):'<option value="">摘要マスタ未登録</option>';
-    const payOpts=HH.payments.length?HH.payments.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join(''):'<option value="">決済マスタ未登録</option>';
-    return `${menuBack()}<h3>📝 支出・収入を記録</h3><p class="myos-small">Excelの入力ルールをWeb用に整理した入力画面。入力後の自動判定を確認してから登録します。</p>
-      <div class="myos-card-grid"><div class="myos-card"><label>日付</label><input id="hh6Date" type="date" value="${hhDate()}"><label>内容</label><input id="hh6Desc" placeholder="例：ロピア"><label>摘要</label><select id="hh6Summary"><option value="">選択してください</option>${sumOpts}</select><label>口座・決済</label><select id="hh6Payment"><option value="">選択してください</option>${payOpts}</select></div>
-      <div class="myos-card"><label>金額</label><input id="hh6Amount" type="number" min="0" inputmode="numeric"><label>ポイント利用</label><input id="hh6Points" type="number" min="0" value="0" inputmode="numeric"><label>反映先（必要時）</label><input id="hh6Target"><label>メモ</label><input id="hh6Memo"></div></div>
-      <div id="hh6Preview" class="myos-card" style="margin-top:14px"></div><button class="primary" style="width:100%;margin-top:12px" onclick="window.hhPreviewAndSave()">内容を確認して登録</button>`;
-  }
-  function preview(){
-    const amount=Number(el('hh6Amount')?.value||0),points=Math.max(0,Number(el('hh6Points')?.value||0));
-    const s=summaryByName(el('hh6Summary')?.value),p=paymentByName(el('hh6Payment')?.value),c=categoryForSummary(s),card=cardForPayment(p);
-    const real=Math.max(0,amount-points);
-    if(el('hh6Preview')) el('hh6Preview').innerHTML=`<h4 style="margin-top:0">自動判定</h4><div class="myos-small">カテゴリ・処理区分・請求先はマスタから判定します。</div><div style="margin-top:10px;line-height:1.9"><div>摘要：<b>${esc(s?.name||'未選択')}</b></div><div>カテゴリ：<b>${esc(c?.name||s?.category_name||'—')}</b></div><div>決済：<b>${esc(p?.name||'未選択')}</b></div><div>請求先カード：<b>${esc(card?.name||p?.card_name||'—')}</b></div><div>金額：<b>${yen(amount)}</b></div><div>ポイント：<b>${yen(points)}</b></div><div>実決済額：<b>${yen(real)}</b></div></div>`;
-  }
-  async function previewAndSave(){
-    preview();
-    const date=el('hh6Date')?.value,desc=el('hh6Desc')?.value.trim(),summary=el('hh6Summary')?.value,payment=el('hh6Payment')?.value,amount=Number(el('hh6Amount')?.value||0),points=Number(el('hh6Points')?.value||0);
-    if(!date||!desc||!summary||!payment||amount<=0||points<0||points>amount){alert('日付・内容・摘要・口座/決済・金額・ポイント利用を確認してください。');return;}
-    // Phase 1 safety: do not write until the final household table schema/RLS is confirmed.
-    alert('入力内容は正しく確認できました。現在は家計DBの最終移行中なので、まだ本登録は行いません。');
-  }
-  function hhHistory(){
-    const rows=HH.transactions.slice().sort((a,b)=>String(b.transaction_date||b.date||'').localeCompare(String(a.transaction_date||a.date||''))).slice(0,100);
-    return `${menuBack()}<div class="myos-section-head"><h3>📋 家計履歴</h3><span class="myos-small">${rows.length}件表示</span></div>${rows.length?rows.map(t=>`<div class="myos-card" style="margin:8px 0"><div class="row" style="justify-content:space-between"><b>${esc(t.description||t.content||t.name||'取引')}</b><strong>${yen(t.amount)}</strong></div><div class="myos-small">${esc(t.transaction_date||t.date||'')} ・ ${esc(t.summary_name||t.summary||'')} ・ ${esc(t.payment_name||t.payment||'')}</div></div>`).join(''):'<div class="myos-card">履歴データはまだありません。</div>'}`;
-  }
-  function hhMonthly(){
-    const cats={};HH.transactions.filter(t=>String(t.transaction_date||t.date||'').slice(0,7)===HH.month).forEach(t=>{const c=t.category_name||t.category||'その他';cats[c]=(cats[c]||0)+Number(t.real_payment_amount??t.amount??0);});
-    return `${menuBack()}<div class="myos-section-head"><div><div class="myos-small">対象年月</div><input id="hhMonth" type="month" value="${HH.month}" style="width:auto"></div></div><div class="myos-card"><h3>📊 カテゴリ別支出</h3>${Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="row" style="justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee"><span>${esc(n)}</span><b>${yen(v)}</b></div>`).join('')||'<div class="myos-small">この月の取引はありません。</div>'}</div>`;
-  }
-  function hhCards(){
-    return `${menuBack()}<h3>💳 カード請求</h3><div class="myos-card-grid">${HH.cards.length?HH.cards.map(c=>`<div class="myos-card"><b>${esc(c.name)}</b><div class="myos-small">締日：${esc(c.closing_day??c.closingDay??'—')}日 ・ 引落：${esc(c.payment_day??c.paymentDay??'—')}日</div><div style="font-size:24px;margin-top:8px">${yen(c.current_bill||c.billing_amount||0)}</div><div class="myos-small">請求額はカード請求ロジック完成後に自動計算</div></div>`).join(''):'<div class="myos-card">カードマスタはまだ読み込まれていません。</div>'}</div>`;
-  }
-  function hhAssets(){
-    return `${menuBack()}<h3>🏦 資産・負債</h3><div class="myos-card-grid"><div class="myos-card"><h3>現預金</h3>${HH.accounts.length?HH.accounts.map(a=>`<div class="row" style="justify-content:space-between;padding:8px 0"><span>${esc(a.name)}</span><b>${yen(a.current_balance??a.balance??a.initial_balance??0)}</b></div>`).join(''):'<div class="myos-small">口座データなし</div>'}</div><div class="myos-card"><h3>カード負債</h3>${HH.cards.length?HH.cards.map(c=>`<div class="row" style="justify-content:space-between;padding:8px 0"><span>${esc(c.name)}</span><b>${yen(c.balance??c.outstanding_balance??0)}</b></div>`).join(''):'<div class="myos-small">カードデータなし</div>'}</div></div>`;
-  }
-  function hhSettings(){
-    return `${menuBack()}<h3>⚙ 家計設定</h3><div class="myos-card-grid"><div class="myos-card"><h3>摘要・カテゴリ</h3><div class="myos-small">${HH.summaries.length}件の摘要マスタ / ${HH.categories.length}件のカテゴリ</div></div><div class="myos-card"><h3>口座・決済</h3><div class="myos-small">${HH.accounts.length}口座 / ${HH.payments.length}決済手段 / ${HH.cards.length}カード</div></div><div class="myos-card"><h3>予算</h3><div class="myos-small">${HH.budgets.length}件。月予算を編集可能にする予定</div></div><div class="myos-card"><h3>データ基盤</h3><div class="myos-small">家計はGoogleユーザー単位でSupabaseに保存する設計です。</div></div></div>`;
-  }
-  function render(screen='home'){
-    const box=el('hhScreen');if(!box)return;
-    const views={home:hhHome,input:hhInput,history:hhHistory,monthly:hhMonthly,cards:hhCards,assets:hhAssets,settings:hhSettings};
-    box.innerHTML=(views[screen]||hhHome)();
-    if(screen==='input'){['hh6Amount','hh6Points','hh6Summary','hh6Payment'].forEach(id=>el(id)?.addEventListener('input',preview));el('hh6Summary')?.addEventListener('change',preview);el('hh6Payment')?.addEventListener('change',preview);preview();}
-    if(screen==='monthly')el('hhMonth')?.addEventListener('change',e=>{HH.month=e.target.value;render('monthly');});
-  }
-  document.addEventListener('click',e=>{const b=e.target.closest('[data-hh-screen]');if(b)render(b.dataset.hhScreen);});
-  window.hhRender=render;window.hhPreviewAndSave=previewAndSave;
-  window.addEventListener('myos-user-ready',loadHH);
-  // Existing study boot runs after auth; observe the shared user variable without touching study state.
-  const timer=setInterval(()=>{if(typeof currentUser!=='undefined' && currentUser?.id){clearInterval(timer);loadHH();}},500);
-  render('home');
-})();
-</script>
 
 <script id="myosHouseholdV7">
 (function(){
