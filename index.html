@@ -1043,7 +1043,53 @@ init().catch(e=>{console.error(e);document.getElementById('authError').textConte
   async function save(){const uid=currentUser.id,date=el('hh7Date').value,desc=el('hh7Desc').value.trim(),sn=el('hh7Summary').value,pn=el('hh7Payment').value,a=Number(el('hh7Amount').value||0),pt=Number(el('hh7Points').value||0),target=el('hh7Target').value.trim()||null,memo=el('hh7Memo').value.trim()||null;if(!date||!desc||!sn||!pn||a<=0||pt<0||pt>a){alert('日付・内容・摘要・決済・金額・ポイントを確認してください。');return;}const d=derive(date,sn,pn,a,pt);const row={user_id:uid,transaction_date:date,description:desc,summary_id:d.s?.id||null,summary_name:d.s?.name||sn,payment_method_id:d.p?.id||null,payment_method_name:d.p?.name||pn,amount:a,points_used:pt,target_input:target,memo,cashflow_type:d.s?.cashflow_type||'expense',category_name:d.s?.category_name||'その他',process_type:d.s?.process_type||'normal',target_auto:d.s?.target_name||null,billing_type:d.s?.billing_type||null,billing_card_id:d.card?.id||null,billing_card_name:d.card?.name||null,billing_year_month:d.billing};const {error}=await sb.from('household_transactions').insert(row);if(error){alert('登録に失敗：'+error.message);return;}await load();toast('家計を登録しました');window.hh7Render('home');}
   function history(){const rows=HH7.transactions.slice(0,100);return `${menuBack()}<div class="myos-section-head"><h3>📋 家計履歴</h3><span class="myos-small">${rows.length}件</span></div>${rows.map(t=>`<div class="myos-card" style="margin:8px 0"><div class="row" style="justify-content:space-between"><div><b>${esc(t.description)}</b><div class="myos-small">${esc(t.transaction_date)} ・ ${esc(t.summary_name||'')} ・ ${esc(t.payment_method_name||'')}</div></div><strong>${yen(t.amount)}</strong></div><div class="myos-small">実決済 ${yen(t.actual_payment)} / ${esc(t.category_name||'')}</div></div>`).join('')||'<div class="myos-card">まだ記録がありません。</div>'}`;}
   function monthly(){const cats={};HH7.transactions.filter(t=>String(t.transaction_date).slice(0,7)===HH7.month&&t.process_type==='normal').forEach(t=>cats[t.category_name||'その他']=(cats[t.category_name||'その他']||0)+Number(t.actual_payment||0));return `${menuBack()}<div class="myos-section-head"><div><div class="myos-small">対象年月</div><input id="hh7Month" type="month" value="${HH7.month}" style="width:auto"></div></div><div class="myos-card"><h3>📊 月次支出</h3>${Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="row" style="justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee"><span>${esc(n)}</span><b>${yen(v)}</b></div>`).join('')||'<div class="myos-small">この月の支出はありません。</div>'}</div>`;}
-  function cards(){return `${menuBack()}<h3>💳 カード請求</h3><div class="myos-card-grid">${HH7.cards.map(c=>{const b=HH7.transactions.filter(t=>t.billing_card_id===c.id&&String(t.billing_year_month).slice(0,7)===HH7.month).reduce((x,t)=>x+Number(t.actual_payment||0),0);return `<div class="myos-card"><b>${esc(c.name)}</b><div class="myos-small">締日 ${esc(c.close_day)}日 / 引落 ${esc(c.withdrawal_day)}日</div><h2>${yen(b)}</h2><div class="myos-small">対象請求年月：${HH7.month}</div></div>`}).join('')||'<div class="myos-card">カードを登録すると請求額を自動集計します。</div>'}</div>`;}
+  function cards(){function cards(){
+  const base=new Date(HH7.month+'-01T00:00:00');
+
+  function addMonth(n){
+    const d=new Date(base);
+    d.setMonth(d.getMonth()+n);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+
+  const months=[
+    {ym:addMonth(0),label:'当月'},
+    {ym:addMonth(1),label:'来月'},
+    {ym:addMonth(2),label:'再来月'}
+  ];
+
+  return `${menuBack()}
+    <h3>💳 カード請求</h3>
+    ${months.map(m=>`
+      <div class="myos-card" style="margin-top:14px">
+        <div class="myos-section-head">
+          <div>
+            <div class="myos-small">${m.label}</div>
+            <h3 style="margin:4px 0">${m.ym}</h3>
+          </div>
+        </div>
+
+        ${HH7.cards.map(c=>{
+          const b=HH7.transactions
+            .filter(t=>
+              t.billing_card_id===c.id &&
+              String(t.billing_year_month||'').slice(0,7)===m.ym
+            )
+            .reduce((x,t)=>x+Number(t.actual_payment||0),0);
+
+          return `
+            <div class="row" style="justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee">
+              <div>
+                <b>${esc(c.name)}</b>
+                <div class="myos-small">締日 ${esc(c.close_day)}日 / 引落 ${esc(c.withdrawal_day)}日</div>
+              </div>
+              <strong>${yen(b)}</strong>
+            </div>
+          `;
+        }).join('') || '<div class="myos-small">カードを登録してください。</div>'}
+      </div>
+    `).join('')}`;
+}
   function assets(){const acc=HH7.accounts.map(a=>{const tx=HH7.transactions.filter(t=>t.payment_method_name===a.name);let bal=Number(a.initial_balance||0);tx.forEach(t=>{const amt=Number(t.actual_payment||0),pt=t.process_type;if(t.cashflow_type==='income')bal+=amt;else if(pt==='normal')bal-=amt;});return `<div class="row" style="justify-content:space-between;padding:9px 0"><span>${esc(a.name)}</span><b>${yen(bal)}</b></div>`}).join('');const cards=HH7.cards.map(c=>{const b=HH7.transactions.filter(t=>t.billing_card_id===c.id).reduce((x,t)=>x+Number(t.actual_payment||0),0);return `<div class="row" style="justify-content:space-between;padding:9px 0"><span>${esc(c.name)}</span><b>${yen(b)}</b></div>`}).join('');return `${menuBack()}<h3>🏦 資産・負債</h3><div class="myos-card-grid"><div class="myos-card"><h3>現預金</h3>${acc||'<div class="myos-small">口座を登録してください。</div>'}</div><div class="myos-card"><h3>カード負債</h3>${cards||'<div class="myos-small">カードを登録してください。</div>'}</div></div>`;}
   function settings(){return `${menuBack()}<h3>⚙ 家計設定</h3><div class="myos-card-grid"><div class="myos-card"><h3>摘要を追加</h3><input id="hh7NewSummary" placeholder="例：食材費"><select id="hh7NewSummaryType"><option value="normal">通常支出</option><option value="income">収入</option><option value="borrowing">借入</option><option value="repayment">返済</option><option value="transfer">振替</option><option value="card_payment">カード引落</option></select><button class="primary" style="margin-top:10px" onclick="window.hh7AddSummary()">摘要を追加</button><div class="myos-small" style="margin-top:8px">現在 ${HH7.summaries.length}件</div></div><div class="myos-card"><h3>決済方法を追加</h3><input id="hh7NewPayment" placeholder="例：現金、三井住友銀行、JCB W"><select id="hh7NewPaymentType"><option value="cash">現金</option><option value="bank">銀行口座</option><option value="wallet">電子マネー・QR</option><option value="card">クレジットカード</option><option value="transit">交通系IC</option><option value="other">その他</option></select><button class="primary" style="margin-top:10px" onclick="window.hh7AddPayment()">決済方法を追加</button><div class="myos-small" style="margin-top:8px">現在 ${HH7.payments.length}件</div></div><div class="myos-card"><h3>口座を追加</h3><input id="hh7NewAccount" placeholder="例：三井住友銀行"><input id="hh7NewAccountBalance" type="number" placeholder="初期残高" value="0"><select id="hh7NewAccountType"><option value="bank">銀行口座</option><option value="cash">現金</option><option value="wallet">電子マネー・QR</option><option value="transit">交通系IC</option><option value="other">その他</option></select><button class="primary" style="margin-top:10px" onclick="window.hh7AddAccount()">口座を追加</button><div class="myos-small" style="margin-top:8px">現在 ${HH7.accounts.length}件</div></div><div class="myos-card"><h3>カードを追加</h3><input id="hh7NewCard" placeholder="例：JCB W"><div class="myos-card-grid"><input id="hh7CloseDay" type="number" min="1" max="31" placeholder="締日" value="15"><input id="hh7WithdrawalDay" type="number" min="1" max="31" placeholder="引落日" value="10"></div><button class="primary" style="margin-top:10px" onclick="window.hh7AddCard()">カードを追加</button><div class="myos-small" style="margin-top:8px">現在 ${HH7.cards.length}件</div></div></div><div class="myos-small" style="margin-top:14px">※ 対象年月はここで毎回入力する必要はありません。月次画面で確認・変更できます。</div>`;}
   async function saveSettings(){return;}
