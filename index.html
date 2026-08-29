@@ -395,6 +395,7 @@ async function loginWithGoogle(){
 async function logout(){await sb.auth.signOut()}
 async function boot(user){
   currentUser=user;
+  window.currentUser=user;
   document.getElementById('authScreen').style.display='none';
   document.getElementById('app').style.display='block';
   document.getElementById('userLabel').textContent=user.email||'';
@@ -992,7 +993,7 @@ init().catch(e=>{console.error(e);document.getElementById('authError').textConte
   const cardNameForPayment=n=>paymentType(n)==='card'?n:null;
 
   async function ensureMasters(){
-    if(!window.currentUser?.id)return;
+    if(!currentUser?.id)return;
     const uid=currentUser.id;
     const {data:cats}=await sb.from('household_categories').select('*').eq('user_id',uid);
     HH7.categories=cats||[];
@@ -1012,7 +1013,7 @@ init().catch(e=>{console.error(e);document.getElementById('authError').textConte
   }
 
   async function load(){
-    if(!window.currentUser?.id)return;
+    if(!currentUser?.id)return;
     await ensureMasters();
     const uid=currentUser.id;
     const [s,p,a,c,cat,b,t,st]=await Promise.all([
@@ -1044,7 +1045,7 @@ init().catch(e=>{console.error(e);document.getElementById('authError').textConte
   document.addEventListener('click',e=>{const b=e.target.closest('[data-hh-screen]');if(b){e.preventDefault();render(b.dataset.hhScreen);}});
   window.hh7Render=render;window.hh7Save=save;window.hh7SaveSettings=saveSettings;window.hh7AddSummary=addSummary;window.hh7AddPayment=addPayment;window.hh7AddAccount=addAccount;window.hh7AddCard=addCard;
   window.addEventListener('myos-user-ready',load);
-  const timer=setInterval(()=>{if(window.currentUser?.id){clearInterval(timer);load();}},400);
+  const timer=setInterval(()=>{if(currentUser?.id){clearInterval(timer);load();}},400);
   render('home');
 })();
 </script>
