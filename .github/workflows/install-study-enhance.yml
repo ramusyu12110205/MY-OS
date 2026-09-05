@@ -1,35 +1,30 @@
-name: Install study enhancement
+name: Cleanup accidental qualification enhancement
 on:
   push:
     paths:
-      - 'study-os-enhance.js'
       - '.github/workflows/install-study-enhance.yml'
 permissions:
   contents: write
 jobs:
-  install:
+  cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Add enhancement script to page
+      - name: Remove accidental changes
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text()
-          tag='<script src="study-os-enhance.js?v=2"></script>'
-          if 'study-os-enhance.js' not in s:
-              marker='</body>'
-              if marker not in s:
-                  raise SystemExit('body marker not found')
-              s=s.replace(marker, tag+'\n'+marker, 1)
-              p.write_text(s)
+          s=s.replace('<script src="study-os-enhance.js?v=2"></script>\n','')
+          s=s.replace('<script src="study-os-enhance.js"></script>\n','')
+          p.write_text(s)
           PY
-      - name: Commit and push
+          rm -f study-os-enhance.js .github/workflows/install-study-enhance.yml
+      - name: Commit and push cleanup
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add index.html
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'Load study OS enhancement'
+          git add -A
+          git commit -m 'Revert accidental qualification OS changes'
           git push
